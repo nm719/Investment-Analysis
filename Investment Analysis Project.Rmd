@@ -1,0 +1,185 @@
+---
+title: "Investment Analysis Project"
+author: "Nosung Myung"
+header-includes:
+  \usepackage{fvextra}
+  \DefineVerbatimEnvironment{Highlighting}{Verbatim}{breaklines,commandchars=\\\{\}}
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+There are various strategies in the world of finance and investment analysis. One of the most important topic is the Modern Portfolio Theory by Harry Markowitz. It is a study of return and risk and, thus, also called the Mean-Variance Analysis. I have referenced a paper by Robert Merton called "An Analytic Derivation of the Efficient Portfolio Frontier" extensive. I have provided a link below if you would like to know the details of the theroy behind it. Let's dive right in.
+
+https://dspace.mit.edu/bitstream/handle/1721.1/46832/analyticderivati00mert.pdf?sequence=1
+
+&nbsp;
+
+For this project, I have decided to use 5 years of training stock data from 2014-2019 to build models and test them against 3 years of test data after that period. I have personally selected 30 stocks from 5 different sectors from S&P 500. I have used Python to scrape the stock data from Yahoo Finance and R to perform the analysis.
+
+&nbsp;
+
+1. Let's first read the training data and test data.
+
+```{r}
+# Read the training and test data
+# Training data: 2014-2019
+# Test data: 2019-2022
+library(readr)
+training <- read_csv("training.csv", show_col_types = FALSE)
+test <- read_csv("test.csv", show_col_types = FALSE)
+```
+
+&nbsp;
+
+2. We will convert closing prices into returns.
+
+```{r}
+# Convert closing prices into returns
+training_return <- (training[-1,3:ncol(training)] - training[-nrow(training),3:ncol(training)]) / training[-nrow(training),3:ncol(training)]
+```
+
+&nbsp;
+
+3. We will calculate means, standard deviations, covariance matrix, and correlation matrix of the 30 assets.
+
+```{r}
+# Calculate mean, standard deviations, covariance matrix, and correlation matrix
+training_return_means <- colMeans(training_return[-ncol(training_return)])
+training_return_covmat <- cov(training_return[-ncol(training_return)])
+training_return_stdev <- diag(training_return_covmat)^0.5
+training_return_cormat <- cor(training_return[-ncol(training_return)])
+```
+
+\newpage
+
+4. Now, let's plot Expected Return vs Standard Deviation
+
+```{r out.width="72%", fig.align="center"}
+plot(training_return_stdev, training_return_means, title("Expected Return vs Standard Deviation of 30 Assets"), xlab = "Standard Deviation", ylab = "Expected Return")
+```
+
+&nbsp;
+
+5. We will plot the Equal Allocation Portfolio on the previous plot. This portfolio gives equal weight to all 30 stocks. The portfolio's performance is shown in red.
+
+```{r out.width="72%", fig.align="center"}
+training_return_ea_pf_mean <- mean(training_return_means)
+training_return_ea_pf_stdev <- (sum(training_return_covmat)^0.5) / 30
+plot(training_return_stdev, training_return_means, title("Expected Return vs Standard Deviation of 30 Assets and \n the Equal Allocation Portfolio of 30 Stocks"), xlab = "Standard Deviation", ylab = "Expected Return")
+points(training_return_ea_pf_stdev, training_return_ea_pf_mean, col="red")
+```
+
+6. We will plot the Minimum Risk Portfolio on the previous plot. This portfolio gives weights to stocks such that it minimizes the risk or standard deviation of the portfolio. The portfolio's performance is shown in blue.
+
+```{r out.width="95%", fig.align="center"}
+ones <- replicate(30,1)
+training_return_mr_pf_x <- solve(training_return_covmat) %*% ones / as.numeric(t(ones) %*% solve(training_return_covmat) %*% ones)
+training_return_mr_pf_mean <- t(training_return_mr_pf_x) %*% training_return_means
+training_return_mr_pf_stdev <- (t(training_return_mr_pf_x) %*% training_return_covmat %*% training_return_mr_pf_x)^0.5
+plot(training_return_stdev, training_return_means, title("Expected Return vs Standard Deviation of 30 Assets, the Equal \n Allocation Portfolio and the Minimum Risk Portfolio of 30 Stocks"), xlab = "Standard Deviation", ylab = "Expected Return", xlim=c(0.015, 0.14))
+points(training_return_ea_pf_stdev, training_return_ea_pf_mean, col="red")
+points(training_return_mr_pf_stdev, training_return_mr_pf_mean, col="blue")
+```
+
+&nbsp;
+
+7. We will find the Efficient Portfolio for a given return. This portfolio will give weights to stocks to meet our set expected return while minimizing the risk. I have set the expected return as 8%.
+
+```{r}
+A <- t(ones) %*% solve(training_return_covmat) %*% training_return_means
+B <- t(training_return_means) %*% solve(training_return_covmat) %*% training_return_means
+C <- t(ones) %*% solve(training_return_covmat) %*% ones
+D <- B * C - A^2
+E <- 0.08
+lambda1 <- (C*E-A) / D
+lambda2 <- (B-A*E) / D
+training_return_ef_pf_comp <- as.numeric(lambda1) * solve(training_return_covmat) %*% training_return_means + as.numeric(lambda2) * solve(training_return_covmat) %*% ones
+```
+
+8. We will plot the frontier of the Efficient Portfolio on the plot above. The 30 stocks are plotted in black, minimum risk portfolio in blue, S&P 500 index in green, equal allocation portfolio in red, and portfolio with expected return of 0.08 in orange.
+
+```{r}
+training_return_ef_pf_stdev <- seq((1/C)^0.5, 1, by = 0.0001)
+training_return_ef_pf_minE <- A/C
+options(warn=-1)
+y1 <- (A+sqrt(D*(C*training_return_ef_pf_stdev^2-1)))*(1/C)
+y2 <- (A-sqrt(D*(C*training_return_ef_pf_stdev^2-1)))*(1/C)
+options(warn=0)
+plot(training_return_ef_pf_stdev, y1, xlim=c(0,0.15), ylim=c(-0.01,0.1), type="l", xlab="Expected Risk", ylab="Expected Return", cex=1)
+title("Expected Return vs Risk of 30 Assets, S&P 500 Index, \n Equal Allocation Portfolio, Minimum Risk Portfolio, \n Efficient Portfolio, and Efficient Frontier of 30 Stocks")
+points(training_return_ef_pf_stdev, y2, type = "l")
+points(training_return_stdev, training_return_means, col="black")
+training_sp500_mean <- colMeans(training_return[ncol(training_return)])
+training_sp500_stdev <- cov(training_return[ncol(training_return)])^0.5
+points(training_sp500_stdev, training_sp500_mean, pch=19, col="darkgreen")
+points(training_return_ea_pf_stdev, training_return_ea_pf_mean, pch=19, col="red")
+points(training_return_mr_pf_stdev, training_return_mr_pf_mean, pch=19, col="blue")
+training_return_ep_pf_stdev <- (t(training_return_ef_pf_comp) %*% training_return_covmat %*% training_return_ef_pf_comp)^0.5
+training_return_ep_pf_mean <- t(training_return_ef_pf_comp) %*% training_return_means
+points(training_return_ep_pf_stdev, training_return_ep_pf_mean, pch=19, col="orange")
+```
+
+&nbsp;
+
+9. Finally, let's backtest it with test data. All of the testing data will show in a lighter colored version from the previous plot. I have excluded code for this as it is almost the same as the previous plot.
+
+```{r echo=FALSE}
+test_return <- (test[-1,3:ncol(test)] - test[-nrow(test),3:ncol(test)]) / test[-nrow(test),3:ncol(test)]
+test_return_means <- colMeans(test_return[-ncol(test_return)])
+test_return_covmat <- cov(test_return[-ncol(test_return)])
+test_return_stdev <- diag(test_return_covmat)^0.5
+test_return_cormat <- cor(test_return[-ncol(test_return)])
+test_return_ea_pf_mean <- mean(test_return_means)
+test_return_ea_pf_stdev <- (sum(test_return_covmat)^0.5) / 30
+ones <- replicate(30,1)
+test_return_mr_pf_x <- solve(test_return_covmat) %*% ones / as.numeric(t(ones) %*% solve(test_return_covmat) %*% ones)
+test_return_mr_pf_mean <- t(test_return_mr_pf_x) %*% test_return_means
+test_return_mr_pf_stdev <- (t(test_return_mr_pf_x) %*% test_return_covmat %*% test_return_mr_pf_x)^0.5
+A <- t(ones) %*% solve(test_return_covmat) %*% test_return_means
+B <- t(test_return_means) %*% solve(test_return_covmat) %*% test_return_means
+C <- t(ones) %*% solve(test_return_covmat) %*% ones
+D <- B * C - A^2
+E <- 0.08
+lambda1 <- (C*E-A) / D
+lambda2 <- (B-A*E) / D
+test_return_ef_pf_comp <- as.numeric(lambda1) * solve(test_return_covmat) %*% test_return_means + as.numeric(lambda2) * solve(test_return_covmat) %*% ones
+test_return_ef_pf_stdev <- seq((1/C)^0.5, 1, by = 0.0001)
+test_return_ef_pf_minE <- A/C
+options(warn=-1)
+y3 <- (A+sqrt(D*(C*test_return_ef_pf_stdev^2-1)))*(1/C)
+y4 <- (A-sqrt(D*(C*test_return_ef_pf_stdev^2-1)))*(1/C)
+options(warn=0)
+plot(training_return_ef_pf_stdev, y1, xlim=c(0,0.15), ylim=c(-0.01,0.1), type="l", xlab="Expected Risk", ylab="Expected Return", cex=1)
+title("Expected Return vs Risk of 30 Assets, S&P 500 Index, \n Equal Allocation Portfolio, Minimum Risk Portfolio, \n Efficient Portfolio, and Efficient Frontier of 30 Stocks")
+points(training_return_ef_pf_stdev, y2, type = "l")
+points(training_return_stdev, training_return_means, col="black")
+training_sp500_mean <- colMeans(training_return[ncol(training_return)])
+training_sp500_stdev <- cov(training_return[ncol(training_return)])^0.5
+points(training_sp500_stdev, training_sp500_mean, pch=19, col="darkgreen")
+points(training_return_ea_pf_stdev, training_return_ea_pf_mean, pch=19, col="brown4")
+points(training_return_mr_pf_stdev, training_return_mr_pf_mean, pch=19, col="blue4")
+training_return_ep_pf_stdev <- (t(training_return_ef_pf_comp) %*% training_return_covmat %*% training_return_ef_pf_comp)^0.5
+training_return_ep_pf_mean <- t(training_return_ef_pf_comp) %*% training_return_means
+points(test_return_ef_pf_stdev, y3, type = "l", col="darkgray")
+points(test_return_ef_pf_stdev, y4, type = "l", col="darkgray")
+points(training_return_ep_pf_stdev, training_return_ep_pf_mean, pch=19, col="darkorange2")
+points(test_return_stdev, test_return_means, col="darkgray")
+test_sp500_mean <- colMeans(test_return[ncol(test_return)])
+test_sp500_stdev <- cov(test_return[ncol(test_return)])^0.5
+points(test_sp500_stdev, test_sp500_mean, pch=19, col="darkolivegreen3")
+points(test_return_ea_pf_stdev, test_return_ea_pf_mean, pch=19, col="brown3")
+points(test_return_mr_pf_stdev, test_return_mr_pf_mean, pch=19, col="cornflowerblue")
+test_return_ep_pf_stdev <- (t(test_return_ef_pf_comp) %*% test_return_covmat %*% test_return_ef_pf_comp)^0.5
+test_return_ep_pf_mean <- t(test_return_ef_pf_comp) %*% test_return_means
+points(test_return_ep_pf_stdev, test_return_ep_pf_mean, pch=19, col="orange")
+```
+
+&nbsp;
+
+10. Risk seems to increase for individual stocks, S&P 500 index, and equal allocation portfolio. However, we can see that our efficient frontier has gotten wider, meaning higher expected return for a lower expected risk. As one can see, the efficient portfolio has performed incredibly well in significantly reducing risk while maintaining the same expected return. Thus, we can conclude that the efficient portfolio is definitely worth further investigation as a future investment strategy.
+
